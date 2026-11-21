@@ -6,7 +6,7 @@ on:
       defconfig:
         description: 'Tên file defconfig trong arch/arm64/configs'
         required: true
-        default: 'exynos9810-crownlte_defconfig'
+        default: 'exynos9810_defconfig'
 
 jobs:
   build:
