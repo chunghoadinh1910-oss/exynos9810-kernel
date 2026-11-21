@@ -46,20 +46,22 @@ jobs:
           echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_PATH"
 
-      - name: Tải Neutron Clang toolchain
+      - name: Tải AOSP Clang tương thích Ubuntu 22.04
         run: |
-          mkdir -p toolchain && cd toolchain
-          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S=latest
-          cd ..
+          mkdir -p toolchain/clang
+          curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r450784d.tar.gz" -o clang.tar.gz
+          tar -xzf clang.tar.gz -C toolchain/clang
+          rm -f clang.tar.gz
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain/gcc64
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 toolchain/gcc32
 
       - name: Biên dịch kernel và ghi build_full.log
         shell: bash -o pipefail {0}
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$PWD/toolchain/bin:/usr/bin:/bin:$PATH"
-          export HOSTCC=gcc
-          export HOSTCXX=g++
+          export ANDROID_MAJOR_VERSION=s
+          export PATH="$PWD/toolchain/clang/bin:$PWD/toolchain/gcc64/bin:$PWD/toolchain/gcc32/bin:/usr/bin:/bin:$PATH"
 
           {
             make O=out ARCH=arm64 "${{ github.event.inputs.defconfig }}"
@@ -68,11 +70,16 @@ jobs:
             make -j$(nproc --all) O=out \
               ARCH=arm64 \
               CC=clang \
-              HOSTCC=gcc \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-              LLVM=1 \
-              LLVM_IAS=1
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              READELF=llvm-readelf \
+              OBJSIZE=llvm-size
           } 2>&1 | tee build_full.log
 
       - name: Đóng gói file ZIP flash TWRP bằng AnyKernel3
