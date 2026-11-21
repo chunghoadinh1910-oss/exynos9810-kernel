@@ -46,15 +46,12 @@ jobs:
           echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_PATH"
 
-      - name: Tải AOSP Clang tương thích Ubuntu 22.04
+      - name: Chuẩn bị toolchain tương thích Ubuntu 22.04
         run: |
-          mkdir -p toolchain/clang
-          curl -fL "https://github.com/ZyCromerZ/Clang/releases/download/17.0.0-20230414-release/Clang-17.0.0-20230414.tar.gz" -o clang.tar.gz
-          ls -lh clang.tar.gz
-          tar -xzf clang.tar.gz -C toolchain/clang
-          rm -f clang.tar.gz
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 toolchain/gcc64
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchain/gcc32
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+          clang --version
+          aarch64-linux-gnu-gcc --version
 
       - name: Biên dịch kernel và ghi build_full.log
         run: |
@@ -66,7 +63,7 @@ jobs:
             export ARCH=arm64
             export SUBARCH=arm64
             export ANDROID_MAJOR_VERSION=s
-            export PATH="$PWD/toolchain/clang/bin:$PWD/toolchain/gcc64/bin:$PWD/toolchain/gcc32/bin:/usr/bin:/bin:$PATH"
+            export PATH="/usr/bin:/bin:$PATH"
 
             make O=out ARCH=arm64 "${{ github.event.inputs.defconfig }}"
             echo "=== KIEM TRA CONFIG KSU TRONG out/.config ==="
@@ -74,7 +71,6 @@ jobs:
             make -j$(nproc --all) O=out \
               ARCH=arm64 \
               CC=clang \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
               LD=ld.lld \
@@ -85,14 +81,6 @@ jobs:
               READELF=llvm-readelf \
               OBJSIZE=llvm-size
           } 2>&1 | tee -a "$LOG_FILE"
-
-      - name: Tải lên file full log lỗi hoặc build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-Build-Full-Log
-          path: build_full.log
-          if-no-files-found: warn
 
       - name: Đóng gói file ZIP flash TWRP bằng AnyKernel3
         run: |
@@ -118,3 +106,4 @@ jobs:
         with:
           name: Kernel-Build-Full-Log
           path: build_full.log
+          if-no-files-found: warn
