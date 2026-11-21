@@ -56,14 +56,17 @@ jobs:
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 toolchain/gcc32
 
       - name: Biên dịch kernel và ghi build_full.log
-        shell: bash -o pipefail {0}
         run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export ANDROID_MAJOR_VERSION=s
-          export PATH="$PWD/toolchain/clang/bin:$PWD/toolchain/gcc64/bin:$PWD/toolchain/gcc32/bin:/usr/bin:/bin:$PATH"
+          set -o pipefail
+          LOG_FILE="$GITHUB_WORKSPACE/build_full.log"
+          : > "$LOG_FILE"
 
           {
+            export ARCH=arm64
+            export SUBARCH=arm64
+            export ANDROID_MAJOR_VERSION=s
+            export PATH="$PWD/toolchain/clang/bin:$PWD/toolchain/gcc64/bin:$PWD/toolchain/gcc32/bin:/usr/bin:/bin:$PATH"
+
             make O=out ARCH=arm64 "${{ github.event.inputs.defconfig }}"
             echo "=== KIEM TRA CONFIG KSU TRONG out/.config ==="
             grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK" out/.config || true
@@ -80,7 +83,15 @@ jobs:
               OBJDUMP=llvm-objdump \
               READELF=llvm-readelf \
               OBJSIZE=llvm-size
-          } 2>&1 | tee build_full.log
+          } 2>&1 | tee -a "$LOG_FILE"
+
+      - name: Tải lên file full log lỗi hoặc build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Build-Full-Log
+          path: build_full.log
+          if-no-files-found: warn
 
       - name: Đóng gói file ZIP flash TWRP bằng AnyKernel3
         run: |
