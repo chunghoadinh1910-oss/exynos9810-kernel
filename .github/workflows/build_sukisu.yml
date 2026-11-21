@@ -1,10 +1,10 @@
-name: Build Note 9 Kernel - SukiSU-Ultra
+name: Build Note 9 Kernel - SukiSU-Ultra (All-in-One)
 
 on:
   workflow_dispatch:
     inputs:
       defconfig:
-        description: 'Tên file defconfig trong arch/arm64/configs'
+        description: 'Tên defconfig (VD: exynos9810_defconfig)'
         required: true
         default: 'exynos9810_defconfig'
 
@@ -40,8 +40,8 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           DEFCONFIG_PATH="arch/arm64/configs/${{ github.event.inputs.defconfig }}"
-          scripts/config --file "$DEFCONFIG_PATH" -e KSU
-          scripts/config --file "$DEFCONFIG_PATH" -d KSU_KPROBES_HOOK
+          scripts/config --file "$DEFCONFIG_PATH" -e KSU || true
+          scripts/config --file "$DEFCONFIG_PATH" -d KSU_KPROBES_HOOK || true
           scripts/config --file "$DEFCONFIG_PATH" -e KSU_MANUAL_HOOK || true
           echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_PATH"
@@ -52,20 +52,28 @@ jobs:
           bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S=latest
           cd ..
 
-      - name: Biên dịch kernel Exynos 9810
+      - name: Biên dịch kernel và ghi build_full.log
+        shell: bash -o pipefail {0}
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$PWD/toolchain/bin:$PATH"
-          make O=out ARCH=arm64 "${{ github.event.inputs.defconfig }}"
-          grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK" out/.config || true
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LLVM=1 \
-            LLVM_IAS=1
+          export PATH="$PWD/toolchain/bin:/usr/bin:/bin:$PATH"
+          export HOSTCC=gcc
+          export HOSTCXX=g++
+
+          {
+            make O=out ARCH=arm64 "${{ github.event.inputs.defconfig }}"
+            echo "=== KIEM TRA CONFIG KSU TRONG out/.config ==="
+            grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK" out/.config || true
+            make -j$(nproc --all) O=out \
+              ARCH=arm64 \
+              CC=clang \
+              HOSTCC=gcc \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              LLVM=1 \
+              LLVM_IAS=1
+          } 2>&1 | tee build_full.log
 
       - name: Đóng gói file ZIP flash TWRP bằng AnyKernel3
         run: |
@@ -78,8 +86,16 @@ jobs:
           cd AnyKernel3
           zip -r9 ../Note9-N960N-SukiSU-Ultra-AnyKernel3.zip * -x .git README.md *placeholder
 
-      - name: Tải lên Artifacts file ZIP
+      - name: Tải lên file ZIP kernel
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Note9-N960N-SukiSU-Ultra-Zip
           path: Note9-N960N-SukiSU-Ultra-AnyKernel3.zip
+
+      - name: Tải lên file full log lỗi hoặc build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Build-Full-Log
+          path: build_full.log
